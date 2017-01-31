@@ -14,6 +14,7 @@ from django.utils.deprecation import RemovedInDjango19Warning
 def curry(_curried_func, *args, **kwargs):
     def _curried(*moreargs, **morekwargs):
         return _curried_func(*(args + moreargs), **dict(kwargs, **morekwargs))
+
     return _curried
 
 
@@ -37,6 +38,7 @@ def memoize(func, cache, num_args):
         result = func(*args)
         cache[mem_args] = result
         return result
+
     return wrapper
 
 
@@ -48,6 +50,7 @@ class cached_property(object):
     Optional ``name`` argument allows you to make cached properties of other
     methods. (e.g.  url = cached_property(get_absolute_url, name='url') )
     """
+
     def __init__(self, func, name=None):
         self.func = func
         self.__doc__ = getattr(func, '__doc__')
@@ -134,6 +137,7 @@ def lazy(func, *resultclasses):
                 # applies the given magic method of the result type.
                 res = func(*self.__args, **self.__kw)
                 return getattr(res, method_name)(*args, **kw)
+
             return __wrapper__
 
         def __text_cast(self):
@@ -214,16 +218,20 @@ def allow_lazy(func, *resultclasses):
         else:
             return func(*args, **kwargs)
         return lazy_func(*args, **kwargs)
+
     return wrapper
+
 
 empty = object()
 
 
+# NOTE: 被装饰的实例方法,首次调用的时候会执行_setup方法.
 def new_method_proxy(func):
     def inner(self, *args):
         if self._wrapped is empty:
             self._setup()
         return func(self._wrapped, *args)
+
     return inner
 
 
@@ -244,11 +252,13 @@ class LazyObject(object):
         # override __copy__() and __deepcopy__() as well.
         self._wrapped = empty
 
+    # NOTE: 这个可能在方法在obj.x的最后生效,属性调用先设置
     __getattr__ = new_method_proxy(getattr)
 
     def __setattr__(self, name, value):
         if name == "_wrapped":
             # Assign to __dict__ to avoid infinite __setattr__ loops.
+            # NOTE: 如果使用self._wrapped = value就会无限循环
             self.__dict__["_wrapped"] = value
         else:
             if self._wrapped is empty:
@@ -268,6 +278,7 @@ class LazyObject(object):
         """
         raise NotImplementedError('subclasses of LazyObject must provide a _setup() method')
 
+    # TODO: 序列化相关的两个方法
     # Because we have messed with __class__ below, we confuse pickle as to what
     # class we are pickling. We're going to have to initialize the wrapped
     # object to successfully pickle it, so we might as well just pickle the
@@ -308,6 +319,10 @@ class LazyObject(object):
             # We have to use type(self), not self.__class__, because the
             # latter is proxied.
             result = type(self)()
+            # NOTE: 返回一个新的result,但是要使用memo是因为如果不使用,就会循环下去
+            # 比如A有个b=B(A),拷贝A的时候,去拷贝B,又去拷贝A,循环
+            # 但是如果拷贝A的时候先创建一个新的aa,记录memo[id(a)]的结果为aa,然后去拷贝B,发现B指向一个a,但是a已经在memo中,
+            # 拷贝的是aa,直接把引用拿过来即可,这样就对了,因为不仅要记录拷贝过什么,还有有拷贝的结果的引用.
             memo[id(self)] = result
             return result
         return copy.deepcopy(self._wrapped, memo)
@@ -326,6 +341,7 @@ class LazyObject(object):
 
     # Need to pretend to be the wrapped class, for the sake of objects that
     # care about this (especially in equality tests)
+    # NOTE:因为__class__是一个属性,访问的时候要调用new_method方法需要将其变为属性..,这样访问属性就会调用访问方法了
     __class__ = property(new_method_proxy(operator.attrgetter("__class__")))
     __eq__ = new_method_proxy(operator.eq)
     __ne__ = new_method_proxy(operator.ne)
@@ -346,13 +362,17 @@ def unpickle_lazyobject(wrapped):
     wrapped object.
     """
     return wrapped
+
+
 unpickle_lazyobject.__safe_for_unpickling__ = True
 
-
 # Workaround for http://bugs.python.org/issue12370
+# NOTE:新的python版本应该没有问题了
 _super = super
 
 
+# NOTE: request.user = SimpleLazyObject(lambda: get_user(request))
+# 推测作用:user获得了其对象user,但是只有在真正访问user对象的属性或者设置的时候才会调用get_user方法.做到延迟加载.
 class SimpleLazyObject(LazyObject):
     """
     A lazy object initialized from any function.
@@ -360,6 +380,7 @@ class SimpleLazyObject(LazyObject):
     Designed for compound objects of unknown type. For builtins or objects of
     known type, use django.utils.functional.lazy.
     """
+
     def __init__(self, func):
         """
         Pass in a callable that returns the object to be wrapped.
@@ -377,6 +398,9 @@ class SimpleLazyObject(LazyObject):
 
     # Return a meaningful representation of the lazy object for debugging
     # without evaluating the wrapped object.
+    # NOTE: 只有代理的对象被访问过,才会调用_setup,才会有self._wrapped.
+    # 所以没访问过的话,返回内部函数的表示方式:使用%r避免 '%s'%(repr())
+    # 访问过了返回对象的方式
     def __repr__(self):
         if self._wrapped is empty:
             repr_attr = self._setupfunc
@@ -384,6 +408,7 @@ class SimpleLazyObject(LazyObject):
             repr_attr = self._wrapped
         return '<%s: %r>' % (type(self).__name__, repr_attr)
 
+    # NOTE: 如果访问过,返回访问的代理对象,否则返回一个新的对象本身即可,不返回self应该是因为ID的关系
     def __copy__(self):
         if self._wrapped is empty:
             # If uninitialized, copy the wrapper. Use SimpleLazyObject, not
@@ -393,6 +418,7 @@ class SimpleLazyObject(LazyObject):
             # If initialized, return a copy of the wrapped object.
             return copy.copy(self._wrapped)
 
+    # 同理,如果有包装返回包装的,否则由于没有执行,因此不需要做任何事情呀
     def __deepcopy__(self, memo):
         if self._wrapped is empty:
             # We have to use SimpleLazyObject, not self.__class__, because the
@@ -408,6 +434,7 @@ class lazy_property(property):
     A property that works with subclasses by wrapping the decorated
     functions of the base class.
     """
+
     def __new__(cls, fget=None, fset=None, fdel=None, doc=None):
         if fget is not None:
             @wraps(fget)
@@ -437,6 +464,7 @@ def partition(predicate, values):
         results[predicate(item)].append(item)
     return results
 
+
 if sys.version_info >= (2, 7, 2):
     from functools import total_ordering
 else:
@@ -462,7 +490,7 @@ else:
         roots = set(dir(cls)) & set(convert)
         if not roots:
             raise ValueError('must define at least one ordering operation: < > <= >=')
-        root = max(roots)       # prefer __lt__ to __le__ to __gt__ to __ge__
+        root = max(roots)  # prefer __lt__ to __le__ to __gt__ to __ge__
         for opname, opfunc in convert[root]:
             if opname not in roots:
                 opfunc.__name__ = opname

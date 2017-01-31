@@ -10,6 +10,7 @@ def setup():
     Configure the settings (this happens as a side effect of accessing the
     first setting), configure logging and populate the app registry.
     """
+    # TODO: 为什么在函数内部导入
     from django.apps import apps
     from django.conf import settings
     from django.utils.log import configure_logging
