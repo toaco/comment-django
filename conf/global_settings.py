@@ -574,9 +574,11 @@ MESSAGE_STORAGE = 'django.contrib.messages.storage.fallback.FallbackStorage'
 ###########
 
 # The callable to use to configure logging
+# 配置线面LOGGING的可调用对象
 LOGGING_CONFIG = 'logging.config.dictConfig'
 
 # Custom logging configuration.
+# 自定义的logging配置,字典类型
 LOGGING = {}
 
 # Default exception reporter filter class used in case none has been

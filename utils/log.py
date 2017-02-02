@@ -20,6 +20,7 @@ getLogger = logging.getLogger
 # Default logging for Django. This sends an email to the site admins on every
 # HTTP 500 error. Depending on DEBUG, all other log records are either sent to
 # the console (DEBUG=True) or discarded by mean of the NullHandler (DEBUG=False).
+# 使用字典做配置,很简洁好维护容易读懂
 DEFAULT_LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -32,6 +33,7 @@ DEFAULT_LOGGING = {
         },
     },
     'handlers': {
+        # 3个handler,console用于开发环境,所有消息都在控制台显示,mail_admins用于产品环境
         'console': {
             'level': 'INFO',
             'filters': ['require_debug_true'],
@@ -47,19 +49,23 @@ DEFAULT_LOGGING = {
         }
     },
     'loggers': {
+        # 开发环境的
         'django': {
             'handlers': ['console'],
         },
+        # 真实环境的
         'django.request': {
             'handlers': ['mail_admins'],
             'level': 'ERROR',
             'propagate': False,
         },
+        # 真实环境的
         'django.security': {
             'handlers': ['mail_admins'],
             'level': 'ERROR',
             'propagate': False,
         },
+        # python logging框架捕获警告后,用于处理的logger,开发环境下将消息显示到控制台
         'py.warnings': {
             'handlers': ['console'],
         },
@@ -68,11 +74,21 @@ DEFAULT_LOGGING = {
 
 
 def configure_logging(logging_config, logging_settings):
+    """
+    配置logging,将警告提升为default,并且转交给logging框架
+    配置有默认配置,但是如果settiing有用户自己的,则使用用户自己的.
+    :param logging_config:
+    :param logging_settings:
+    :return:
+    """
+    # -W参数传递进去的,日志框架不捕获警告,RemovedIn...警告会被忽略,因此会使用用户自己配置的-W选项
+    # 默认是空的
     if not sys.warnoptions:
         # Route warnings through python logging
         logging.captureWarnings(True)
         # RemovedInNextVersionWarning is a subclass of DeprecationWarning which
         # is hidden by default, hence we force the "default" behavior
+        # 因为是DeprecationWarining的子类,所以默认忽略的,这里改变其行为
         warnings.simplefilter("default", RemovedInNextVersionWarning)
 
     if logging_config:
@@ -88,6 +104,7 @@ def configure_logging(logging_config, logging_settings):
 
 class AdminEmailHandler(logging.Handler):
     """An exception log handler that emails log entries to site admins.
+    给管理员发送邮件
 
     If the request is passed as the first argument to the log record,
     request data will be provided in the email report.
@@ -151,6 +168,7 @@ class CallbackFilter(logging.Filter):
     log a record.
 
     """
+
     def __init__(self, callback):
         self.callback = callback
 
