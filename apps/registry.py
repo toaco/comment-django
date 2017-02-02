@@ -62,6 +62,7 @@ class Apps(object):
         This method imports each application module and then each model module.
 
         It is thread safe and idempotent, but not reentrant.
+        线程安全和幂等,但不是可重入的
         """
         if self.ready:
             return
@@ -79,6 +80,7 @@ class Apps(object):
 
             # Load app configs and app modules.
             for entry in installed_apps:
+                # app_config可以直接是AppConfig的实例
                 if isinstance(entry, AppConfig):
                     app_config = entry
                 else:

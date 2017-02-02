@@ -19,7 +19,6 @@ except NameError:
 if six.PY2:
     fs_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
 
-
 # Under Python 2, define our own abspath function that can handle joining
 # unicode paths to a current working directory that has non-ASCII characters
 # in it.  This isn't necessary on Windows since the Windows version of abspath
@@ -42,6 +41,7 @@ else:
 def upath(path):
     """
     Always return a unicode path.
+    返回Unicode类型的path
     """
     if six.PY2 and not isinstance(path, six.text_type):
         return path.decode(fs_encoding)
@@ -78,8 +78,8 @@ def safe_join(base, *paths):
     #  b) The final path must be the same as the base path.
     #  c) The base path must be the most root path (meaning either "/" or "C:\\")
     if (not normcase(final_path).startswith(normcase(base_path + sep)) and
-            normcase(final_path) != normcase(base_path) and
-            dirname(normcase(base_path)) != normcase(base_path)):
+                normcase(final_path) != normcase(base_path) and
+                dirname(normcase(base_path)) != normcase(base_path)):
         raise SuspiciousFileOperation(
             'The joined path ({}) is located outside of the base path '
             'component ({})'.format(final_path, base_path))
