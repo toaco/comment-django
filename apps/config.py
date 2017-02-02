@@ -48,6 +48,7 @@ class AppConfig(object):
 
         # Mapping of lower case model names to model classes. Initially set to
         # None to prevent accidental access before import_models() runs.
+        # 模型名字和模型类的映射
         self.models = None
 
     def __repr__(self):
@@ -195,6 +196,7 @@ class AppConfig(object):
         """
         self.check_models_ready()
         for model in self.models.values():
+            # TODO: 这三个属性看了模型之后再来看
             if model._deferred and not include_deferred:
                 continue
             if model._meta.auto_created and not include_auto_created:
@@ -205,6 +207,7 @@ class AppConfig(object):
 
     def import_models(self, all_models):
         """导入该AppConfig实例的模型模块
+        all_models是一个模型名字和模型类的映射
         """
         # Dictionary of models for this app, primarily maintained in the
         # 'all_models' attribute of the Apps this AppConfig is attached to.
