@@ -14,6 +14,7 @@ class MergeDict(object):
     If a key appears in more than one of the given dictionaries, only the
     first occurrence will be used.
     """
+
     def __init__(self, *dicts):
         warnings.warn('`MergeDict` is deprecated, use `dict.update()` '
                       'instead.', RemovedInDjango19Warning, 2)
@@ -125,6 +126,7 @@ class SortedDict(dict):
     """
     A dictionary that keeps its keys in the order in which they're inserted.
     """
+
     def __new__(cls, *args, **kwargs):
         instance = super(SortedDict, cls).__new__(cls, *args, **kwargs)
         instance.keyOrder = []
@@ -274,7 +276,7 @@ class OrderedSet(object):
     def __bool__(self):
         return bool(self.dict)
 
-    def __nonzero__(self):      # Python 2 compatibility
+    def __nonzero__(self):  # Python 2 compatibility
         return type(self).__bool__(self)
 
 
@@ -284,6 +286,8 @@ class MultiValueDictKeyError(KeyError):
 
 class MultiValueDict(dict):
     """
+    值总是为列表的字典
+    TODO:深入了解该类的实现
     A subclass of dictionary customized to handle multiple values for the
     same key.
 
@@ -303,7 +307,9 @@ class MultiValueDict(dict):
     This class exists to solve the irritating problem raised by cgi.parse_qs,
     which returns a list for every key, even though most Web forms submit
     single name-value pairs.
+    #  cgi.parse_qs返回的值是列表,所以才有该类的存在.
     """
+
     def __init__(self, key_to_list_mapping=()):
         super(MultiValueDict, self).__init__(key_to_list_mapping)
 
@@ -313,6 +319,8 @@ class MultiValueDict(dict):
 
     def __getitem__(self, key):
         """
+        返回最后一个值,如果没有返回空列表
+        注意:该方法没有的时候返回空,get方法没有的时候返回None
         Returns the last data value for this key, or [] if it's an empty list;
         raises KeyError if not found.
         """
@@ -326,13 +334,14 @@ class MultiValueDict(dict):
             return []
 
     def __setitem__(self, key, value):
+        """该方法设置结果是包含一个元素value的列表"""
         super(MultiValueDict, self).__setitem__(key, [value])
 
     def __copy__(self):
         return self.__class__([
-            (k, v[:])
-            for k, v in self.lists()
-        ])
+                                  (k, v[:])
+                                  for k, v in self.lists()
+                                  ])
 
     def __deepcopy__(self, memo=None):
         if memo is None:
@@ -355,6 +364,7 @@ class MultiValueDict(dict):
             self.setlist(k, v)
         self.__dict__.update(obj_dict)
 
+    # TODO: 没有的时候为什么不返回空列表而是返回空呢,难道是和getlist方法区分?
     def get(self, key, default=None):
         """
         Returns the last data value for the passed key. If key doesn't exist
@@ -381,9 +391,11 @@ class MultiValueDict(dict):
             return default
 
     def setlist(self, key, list_):
+        """设置值"""
         super(MultiValueDict, self).__setitem__(key, list_)
 
     def setdefault(self, key, default=None):
+        # 通__setitem__配套使用的.
         if key not in self:
             self[key] = default
             # Do not return default here because __setitem__() may store
@@ -400,7 +412,8 @@ class MultiValueDict(dict):
         return self.getlist(key)
 
     def appendlist(self, key, value):
-        """Appends an item to the internal list associated with key."""
+        """Appends an item to the internal list associated with key.
+        追加"""
         self.setlistdefault(key).append(value)
 
     def _iteritems(self):
@@ -524,6 +537,7 @@ class DictWrapper(dict):
     Used by the SQL construction code to ensure that values are correctly
     quoted before being used.
     """
+
     def __init__(self, data, func, prefix):
         super(DictWrapper, self).__init__(data)
         self.func = func

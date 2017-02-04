@@ -40,7 +40,8 @@ class RawPostDataException(Exception):
 
 
 class HttpRequest(object):
-    """A basic HTTP request."""
+    """A basic HTTP request.
+    Http请求封装在此"""
 
     # The encoding used in GET/POST dicts. None means use default setting.
     _encoding = None
@@ -74,7 +75,7 @@ class HttpRequest(object):
         """Returns the HTTP host using the environment or request headers."""
         # We try three options, in order of decreasing preference.
         if settings.USE_X_FORWARDED_HOST and (
-                'HTTP_X_FORWARDED_HOST' in self.META):
+                    'HTTP_X_FORWARDED_HOST' in self.META):
             host = self.META['HTTP_X_FORWARDED_HOST']
         elif 'HTTP_HOST' in self.META:
             host = self.META['HTTP_HOST']
@@ -316,6 +317,7 @@ class HttpRequest(object):
 class QueryDict(MultiValueDict):
     """
     A specialized MultiValueDict which represents a query string.
+    除了表示一个查询字符串之外,还可以构造出查询字符串
 
     A QueryDict can be used to represent GET or POST data. It subclasses
     MultiValueDict since keys in such data can be repeated, for instance
@@ -330,6 +332,10 @@ class QueryDict(MultiValueDict):
 
     # These are both reset in __init__, but is specified here at the class
     # level so that unpickling will have valid values
+    # 这样相当于所有该类的对象都有这两个值,初始值相同,但是对象使用self._mutable修改,那么不会影响其他的(在自己的字典)
+    # 因此,这个就相当于其他编程语言初始化过程,而且如果不修改使用默认值,那么会很节约空间
+
+    # 如果可变,那么就可以对字典进行增删改查操作了,这里设置为True好像没什么意义.因为init过程会使其为False
     _mutable = True
     _encoding = None
 
@@ -337,8 +343,11 @@ class QueryDict(MultiValueDict):
         super(QueryDict, self).__init__()
         if not encoding:
             encoding = settings.DEFAULT_CHARSET
+        # 这个encoding是属性?,即在init过程中可以使用属性.
         self.encoding = encoding
         if six.PY3:
+            # 查询字符串,可能是bytes(默认iso-8859-1编码),可能是None,可能是'',也可能是Unicode
+            # 下面保证将其转化为Unicode
             if isinstance(query_string, bytes):
                 # query_string normally contains URL-encoded data, a subset of ASCII.
                 try:
@@ -346,6 +355,8 @@ class QueryDict(MultiValueDict):
                 except UnicodeDecodeError:
                     # ... but some user agents are misbehaving :-(
                     query_string = query_string.decode('iso-8859-1')
+
+            # 从中拿出查询字符串的值,为什么不适用parse_qs?,注意query_string or ''的用法,值得学习
             for key, value in parse_qsl(query_string or '',
                                         keep_blank_values=True,
                                         encoding=encoding):
