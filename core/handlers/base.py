@@ -28,6 +28,7 @@ class BaseHandler(object):
     ]
 
     def __init__(self):
+        # Django的五种中间件.todo:为什么不初始化为空列表
         self._request_middleware = None
         self._view_middleware = None
         self._template_response_middleware = None
@@ -47,9 +48,11 @@ class BaseHandler(object):
 
         request_middleware = []
         for middleware_path in settings.MIDDLEWARE_CLASSES:
+            # 这里使用了import_string方法.TODO: AppConfig为什么不适用import_string方法导入
             mw_class = import_string(middleware_path)
             try:
                 mw_instance = mw_class()
+            # 对于没有正确导入的中间件将直接忽略,但是在Debug模式下会显示结果
             except MiddlewareNotUsed as exc:
                 if settings.DEBUG:
                     if six.text_type(exc):
@@ -71,13 +74,14 @@ class BaseHandler(object):
 
         # We only assign to this when initialization is complete as it is used
         # as a flag for initialization being complete.
+        # 在最后才赋值,确保的确是正确初始化了
         self._request_middleware = request_middleware
 
     def make_view_atomic(self, view):
         non_atomic_requests = getattr(view, '_non_atomic_requests', set())
         for db in connections.all():
             if (db.settings_dict['ATOMIC_REQUESTS']
-                    and db.alias not in non_atomic_requests):
+                and db.alias not in non_atomic_requests):
                 view = transaction.atomic(using=db.alias)(view)
         return view
 
@@ -143,9 +147,9 @@ class BaseHandler(object):
 
             # Complain if the view returned None (a common error).
             if response is None:
-                if isinstance(callback, types.FunctionType):    # FBV
+                if isinstance(callback, types.FunctionType):  # FBV
                     view_name = callback.__name__
-                else:                                           # CBV
+                else:  # CBV
                     view_name = callback.__class__.__name__ + '.__call__'
                 raise ValueError("The view %s.%s didn't return an HttpResponse object. It returned None instead."
                                  % (callback.__module__, view_name))
@@ -165,10 +169,10 @@ class BaseHandler(object):
 
         except http.Http404 as e:
             logger.warning('Not Found: %s', request.path,
-                        extra={
-                            'status_code': 404,
-                            'request': request
-                        })
+                           extra={
+                               'status_code': 404,
+                               'request': request
+                           })
             if settings.DEBUG:
                 response = debug.technical_404_response(request, e)
             else:
@@ -196,7 +200,7 @@ class BaseHandler(object):
             # The request logger receives events for any problematic request
             # The security logger receives events for all SuspiciousOperations
             security_logger = logging.getLogger('django.security.%s' %
-                            e.__class__.__name__)
+                                                e.__class__.__name__)
             security_logger.error(
                 force_text(e),
                 extra={
@@ -250,12 +254,12 @@ class BaseHandler(object):
             raise
 
         logger.error('Internal Server Error: %s', request.path,
-            exc_info=exc_info,
-            extra={
-                'status_code': 500,
-                'request': request
-            }
-        )
+                     exc_info=exc_info,
+                     extra={
+                         'status_code': 500,
+                         'request': request
+                     }
+                     )
 
         if settings.DEBUG:
             return debug.technical_500_response(request, *exc_info)
