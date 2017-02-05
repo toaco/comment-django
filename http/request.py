@@ -275,6 +275,7 @@ class HttpRequest(object):
             self._post, self._files = QueryDict('', encoding=self._encoding), MultiValueDict()
 
     def close(self):
+        # 关闭文件应该是
         if hasattr(self, '_files'):
             for f in chain.from_iterable(l[1] for l in self._files.lists()):
                 f.close()

@@ -89,6 +89,7 @@ def technical_500_response(request, exc_type, exc_value, tb, status_code=500):
     Create a technical server error response. The last three arguments are
     the values returned from sys.exc_info() and friends.
     """
+    # 异常报告器,能生成text格式的或者html格式的异常
     reporter = ExceptionReporter(request, exc_type, exc_value, tb)
     if request.is_ajax():
         text = reporter.get_traceback_text()
