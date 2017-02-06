@@ -35,6 +35,7 @@ _urlconfs = local()
 
 
 class ResolverMatch(object):
+    """表示解析匹配的函数,及其相关信息"""
     def __init__(self, func, args, kwargs, url_name=None, app_name=None, namespaces=None):
         self.func = func
         self.args = args
@@ -284,11 +285,11 @@ class RegexURLResolver(LocaleRegexProvider):
         self.urlconf_name = urlconf_name
         if not isinstance(urlconf_name, six.string_types):
             self._urlconf_module = self.urlconf_name
-        self.callback = None
         self.default_kwargs = default_kwargs or {}
         self.namespace = namespace
         self.app_name = app_name
 
+        self.callback = None
         self._reverse_dict = {}
         self._namespace_dict = {}
         self._app_dict = {}
@@ -400,9 +401,10 @@ class RegexURLResolver(LocaleRegexProvider):
                 # ...
                 try:
                     sub_match = pattern.resolve(new_path)
-                # TODO:这个404可能从哪里抛出来,只能从本身来,也就是说resolver本身可以作为pattern
+                # 如果是include的没有匹配就会抛出该异常,记录尝试了但是失败了的,可以用于Debug
                 except Resolver404 as e:
                     sub_tried = e.args[0].get('tried')
+                    # 如果是后面没有匹配到
                     if sub_tried is not None:
                         tried.extend([pattern] + t for t in sub_tried)
                     else:
@@ -420,8 +422,10 @@ class RegexURLResolver(LocaleRegexProvider):
                             self.app_name or sub_match.app_name,
                             [self.namespace] + sub_match.namespaces
                         )
-                    toried.append([pattern])
-            raise Reslver404({'tried': tried, 'path': new_path})
+                    tried.append([pattern])
+            # 如果前面匹配但是后面都不匹配抛出的异常
+            raise Resolver404({'tried': tried, 'path': new_path})
+        # 如果前面都不匹配,直接抛出的异常
         raise Resolver404({'path': path})
 
     @property
@@ -564,8 +568,10 @@ def resolve(path, urlconf=None):
 
 
 def reverse(viewname, urlconf=None, args=None, kwargs=None, prefix=None, current_app=None):
+    # 拿到根urlconf
     if urlconf is None:
         urlconf = get_urlconf()
+    # 拿到根urlconf建立的resolver
     resolver = get_resolver(urlconf)
     args = args or []
     kwargs = kwargs or {}

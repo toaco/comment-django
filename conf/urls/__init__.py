@@ -1,12 +1,11 @@
-from importlib import import_module
 import warnings
+from importlib import import_module
 
-from django.core.urlresolvers import (RegexURLPattern,
-    RegexURLResolver, LocaleRegexURLResolver)
 from django.core.exceptions import ImproperlyConfigured
+from django.core.urlresolvers import (RegexURLPattern,
+                                      RegexURLResolver, LocaleRegexURLResolver)
 from django.utils import six
 from django.utils.deprecation import RemovedInDjango110Warning
-
 
 __all__ = ['handler400', 'handler403', 'handler404', 'handler500', 'include', 'patterns', 'url']
 
@@ -66,7 +65,9 @@ def patterns(prefix, *args):
 def url(regex, view, kwargs=None, name=None, prefix=''):
     if isinstance(view, (list, tuple)):
         # For include(...) processing.
+        # include包含的view使其urls模块,后面两个传递给了Resolver
         urlconf_module, app_name, namespace = view
+
         return RegexURLResolver(regex, urlconf_module, kwargs, app_name=app_name, namespace=namespace)
     else:
         if isinstance(view, six.string_types):
