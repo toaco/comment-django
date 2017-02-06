@@ -111,7 +111,7 @@ class BaseHandler(object):
         urlconf = settings.ROOT_URLCONF
         #　根URLconfig设置在当前线程默认为/,但是请求中一般有urlconf,会重写
         urlresolvers.set_urlconf(urlconf)
-        # 拿到了全局的解析器
+        # 拿到了全局的解析器,TODO:为什么不将该resolver直接放在线程中,而是在这里创建,需要reverse的时候又创建
         resolver = urlresolvers.RegexURLResolver(r'^/', urlconf)
         try:
             response = None

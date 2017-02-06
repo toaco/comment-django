@@ -36,6 +36,7 @@ _urlconfs = local()
 
 class ResolverMatch(object):
     """表示解析匹配的函数,及其相关信息"""
+
     def __init__(self, func, args, kwargs, url_name=None, app_name=None, namespaces=None):
         self.func = func
         self.args = args
@@ -308,11 +309,13 @@ class RegexURLResolver(LocaleRegexProvider):
             self.__class__.__name__, urlconf_repr, self.app_name,
             self.namespace, self.regex.pattern)
 
+    # TODO
     def _populate(self):
         lookups = MultiValueDict()
         namespaces = {}
         apps = {}
         language_code = get_language()
+        # todo: 为什么要reverse?
         for pattern in reversed(self.url_patterns):
             if hasattr(pattern, '_callback_str'):
                 self._callback_strs.add(pattern._callback_str)
@@ -467,6 +470,7 @@ class RegexURLResolver(LocaleRegexProvider):
     def reverse(self, lookup_view, *args, **kwargs):
         return self._reverse_with_prefix(lookup_view, '', *args, **kwargs)
 
+    # TODO
     def _reverse_with_prefix(self, lookup_view, _prefix, *args, **kwargs):
         if args and kwargs:
             raise ValueError("Don't mix *args and **kwargs in call to reverse()!")
@@ -566,9 +570,9 @@ def resolve(path, urlconf=None):
         urlconf = get_urlconf()
     return get_resolver(urlconf).resolve(path)
 
-
+# TODO
 def reverse(viewname, urlconf=None, args=None, kwargs=None, prefix=None, current_app=None):
-    # 拿到根urlconf
+    # 拿到根urlconf,根据wsgi启动时的设置,即使不要下面两句也是正确的拿到resolver呀,因为默认的conf就是setting.ROOT_CONF
     if urlconf is None:
         urlconf = get_urlconf()
     # 拿到根urlconf建立的resolver
@@ -578,7 +582,7 @@ def reverse(viewname, urlconf=None, args=None, kwargs=None, prefix=None, current
 
     if prefix is None:
         prefix = get_script_prefix()
-
+    # 如果不是字符串直接拿出来,但是如果是就反转,按照命名空间处理
     if not isinstance(viewname, six.string_types):
         view = viewname
     else:
