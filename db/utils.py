@@ -103,14 +103,17 @@ class DatabaseErrorWrapper(object):
         def inner(*args, **kwargs):
             with self:
                 return func(*args, **kwargs)
+
         return inner
 
 
 def load_backend(backend_name):
     # Look for a fully qualified database backend name
     try:
+        # 直接导入,加一个.base后缀
         return import_module('%s.base' % backend_name)
     except ImportError as e_user:
+        # 没有找到抛出异常,这里只是让报错信息更加有用.暂不深入
         # The database backend wasn't found. Display a helpful error message
         # listing all possible (built-in) database backends.
         backend_dir = os.path.join(os.path.dirname(upath(__file__)), 'backends')
@@ -143,15 +146,20 @@ class ConnectionHandler(object):
         databases is an optional dictionary of database definitions (structured
         like settings.DATABASES).
         """
+        # databases就是一个setting中DATABASES设置那个字典格式
         self._databases = databases
         self._connections = local()
 
     @cached_property
     def databases(self):
+        # 没设置默认为setting
+        # 设置了但是是空则为dummy
+        # 必须有default
         if self._databases is None:
             self._databases = settings.DATABASES
         if self._databases == {}:
             self._databases = {
+                # DEFAULT_DB_ALIAS:'default'
                 DEFAULT_DB_ALIAS: {
                     'ENGINE': 'django.db.backends.dummy',
                 },
@@ -162,25 +170,36 @@ class ConnectionHandler(object):
 
     def ensure_defaults(self, alias):
         """
+        保证设置字典中的所有的设置都被正确设置
         Puts the defaults into the settings dictionary for a given connection
         where no settings is provided.
         """
         try:
+            # 拿到连接的配置,如:
+            # {
+            #     'ENGINE': 'django.db.backends.sqlite3',
+            #     'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+            # }
+            # NOTE:因为拿到的是字典,所以是可变对象,因此会正确设置
             conn = self.databases[alias]
         except KeyError:
             raise ConnectionDoesNotExist("The connection %s doesn't exist" % alias)
 
+        # setdefault返回键的值,然后如果不在字典中,会设置
         conn.setdefault('ATOMIC_REQUESTS', False)
         conn.setdefault('AUTOCOMMIT', True)
+        # 如果没有键,设置成backends.或者空,那么都设置为dummy
         conn.setdefault('ENGINE', 'django.db.backends.dummy')
         if conn['ENGINE'] == 'django.db.backends.' or not conn['ENGINE']:
             conn['ENGINE'] = 'django.db.backends.dummy'
         conn.setdefault('CONN_MAX_AGE', 0)
         conn.setdefault('OPTIONS', {})
+        # 时区设置,如果设置了tz为True则使用UTC否则使用settin的timezone,即setting中use_tz最重要,
         conn.setdefault('TIME_ZONE', 'UTC' if settings.USE_TZ else settings.TIME_ZONE)
+        # 下面几个设置为默认的
         for setting in ['NAME', 'USER', 'PASSWORD', 'HOST', 'PORT']:
             conn.setdefault(setting, '')
-
+    # 下面几个是测试使用的
     TEST_SETTING_RENAMES = {
         'CREATE': 'CREATE_DB',
         'USER_CREATE': 'CREATE_USER',
@@ -193,25 +212,31 @@ class ConnectionHandler(object):
         Makes sure the test settings are available in the 'TEST' sub-dictionary.
         """
         try:
+            # 同样是先拿到字典
             conn = self.databases[alias]
         except KeyError:
             raise ConnectionDoesNotExist("The connection %s doesn't exist" % alias)
-
+        # 是否设置过test
         test_dict_set = 'TEST' in conn
+        # 如果没设置设置默认值,并拿到键值
         test_settings = conn.setdefault('TEST', {})
+
+        # 老式的设置
         old_test_settings = {}
         for key, value in six.iteritems(conn):
             if key.startswith('TEST_'):
                 new_key = key[5:]
                 new_key = self.TEST_SETTING_RENAMES.get(new_key, new_key)
                 old_test_settings[new_key] = value
-
+        # 如果有老式的设置
         if old_test_settings:
+            # 如果同时设置了新式的,但两个不一样,那么久抛出异常
             if test_dict_set:
                 if test_settings != old_test_settings:
                     raise ImproperlyConfigured(
                         "Connection '%s' has mismatched TEST and TEST_* "
                         "database settings." % alias)
+            # 用老式的更新新式的,因此如果同时设置那么会覆盖,并且发出RemovedInDjango19Warning警告
             else:
                 test_settings.update(old_test_settings)
                 for key, _ in six.iteritems(old_test_settings):
@@ -219,27 +244,35 @@ class ConnectionHandler(object):
                                   "to a %s entry in the TEST setting" %
                                   (self.TEST_SETTING_RENAMES_REVERSE.get(key, key), key),
                                   RemovedInDjango19Warning, stacklevel=2)
-
+        # 删除老式的,因为已更新在新式的字典里面
         for key in list(conn.keys()):
             if key.startswith('TEST_'):
                 del conn[key]
         # Check that they didn't just use the old name with 'TEST_' removed
+        # 确保设置的键没有老式的
         for key, new_key in six.iteritems(self.TEST_SETTING_RENAMES):
             if key in test_settings:
                 warnings.warn("Test setting %s was renamed to %s; specified value (%s) ignored" %
                               (key, new_key, test_settings[key]), stacklevel=2)
+        # 给TEST键设置这几个键的默认值.
         for key in ['CHARSET', 'COLLATION', 'NAME', 'MIRROR']:
             test_settings.setdefault(key, None)
 
     def __getitem__(self, alias):
+        # todo
         if hasattr(self._connections, alias):
             return getattr(self._connections, alias)
 
         self.ensure_defaults(alias)
+        # 为什么不命名为ensure_test_defaults
         self.prepare_test_settings(alias)
+        # 拿到的db是一个配置字典
         db = self.databases[alias]
+        # 加上.base后缀,然后导入那个模块
         backend = load_backend(db['ENGINE'])
+        # 根据字典创建连接,同时保存了别名
         conn = backend.DatabaseWrapper(db, alias)
+        # 然后将创建的连接保存在_connection上,线程缓存.
         setattr(self._connections, alias, conn)
         return conn
 
@@ -250,9 +283,17 @@ class ConnectionHandler(object):
         delattr(self._connections, key)
 
     def __iter__(self):
+        # 迭代databases字典,
+        # DATABASES = {
+        #     'default': {
+        #         'ENGINE': 'django.db.backends.sqlite3',
+        #         'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        #     }
+        # }
         return iter(self.databases)
 
     def all(self):
+        # 拿到所有连接的wrapper
         return [self[alias] for alias in self]
 
     def close_all(self):
@@ -301,6 +342,7 @@ class ConnectionRouter(object):
             if instance is not None and instance._state.db:
                 return instance._state.db
             return DEFAULT_DB_ALIAS
+
         return _route_db
 
     db_for_read = _router_func('db_for_read')

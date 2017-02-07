@@ -86,6 +86,7 @@ class BaseHandler(object):
         for db in connections.all():
             if (db.settings_dict['ATOMIC_REQUESTS']
                 and db.alias not in non_atomic_requests):
+                # 为什么只是使用db别名,那么为何还要connections中的那么多处理?,但是总是要处理的和做一些检查,而且第一次就缓存了也是没影响的
                 view = transaction.atomic(using=db.alias)(view)
         return view
 
@@ -109,7 +110,7 @@ class BaseHandler(object):
         # resolver is set
         # 这个resolver本来就要放在外面啊=.=
         urlconf = settings.ROOT_URLCONF
-        #　根URLconfig设置在当前线程默认为/,但是请求中一般有urlconf,会重写
+        # 　根URLconfig设置在当前线程默认为/,但是请求中一般有urlconf,会重写
         urlresolvers.set_urlconf(urlconf)
         # 拿到了全局的解析器,TODO:为什么不将该resolver直接放在线程中,而是在这里创建,需要reverse的时候又创建
         resolver = urlresolvers.RegexURLResolver(r'^/', urlconf)
@@ -142,13 +143,13 @@ class BaseHandler(object):
                     if response:
                         break
 
-            # TODO:make_view_atomic是什么
             # 调用视图方法，如果调用过程中抛出异常，则使用异常中间件
             if response is None:
                 wrapped_callback = self.make_view_atomic(callback)
                 try:
                     response = wrapped_callback(request, *callback_args, **callback_kwargs)
                 except Exception as e:
+                    # 使用异常中间件处理视图抛出的异常
                     # If the view raised an exception, run it through exception
                     # middleware, and if the exception middleware returns a
                     # response, use that. Otherwise, reraise the exception.

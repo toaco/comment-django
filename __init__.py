@@ -17,8 +17,6 @@ def setup():
     from django.utils.log import configure_logging
 
     # 这里就开始访问setting的属性了,那么setting的延迟初始化在这里并没有体现出优势,难道是其他路径不用setting的很多?
-    import logging
-
     # # The callable to use to configure logging,这个东西是ligging模块里面的,表示用字典配置(将配置放在字典然后解析??)
     # LOGGING_CONFIG = 'logging.config.dictConfig'
     # # Custom logging configuration.
