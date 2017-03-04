@@ -8,7 +8,6 @@ from django.middleware.csrf import rotate_token
 from django.utils.crypto import constant_time_compare
 from django.utils.module_loading import import_string
 from django.utils.translation import LANGUAGE_SESSION_KEY
-
 from .signals import user_logged_in, user_logged_out, user_login_failed
 
 SESSION_KEY = '_auth_user_id'
@@ -18,6 +17,7 @@ REDIRECT_FIELD_NAME = 'next'
 
 
 def load_backend(path):
+    """导入验证后端"""
     return import_string(path)()
 
 
@@ -35,6 +35,7 @@ def _get_backends(return_tuples=False):
 
 
 def get_backends():
+    """拿到所有设置了的后端"""
     return _get_backends(return_tuples=False)
 
 
@@ -43,9 +44,12 @@ def _clean_credentials(credentials):
     Cleans a dictionary of credentials of potentially sensitive info before
     sending to less secure functions.
 
+    将所有用户传递过来的credential中的敏感信息删除掉,替换为****
+
     Not comprehensive - intended for user_login_failed signal
     """
-    SENSITIVE_CREDENTIALS = re.compile('api|token|key|secret|password|signature', re.I)
+    SENSITIVE_CREDENTIALS = re.compile(
+        'api|token|key|secret|password|signature', re.I)
     CLEANSED_SUBSTITUTE = '********************'
     for key in credentials:
         if SENSITIVE_CREDENTIALS.search(key):
@@ -56,6 +60,7 @@ def _clean_credentials(credentials):
 def _get_user_session_key(request):
     # This value in the session is always serialized to a string, so we need
     # to convert it back to Python whenever we access it.
+    # TODO:将session中存储的值转变为python的use_pk???
     return get_user_model()._meta.pk.to_python(request.session[SESSION_KEY])
 
 
@@ -64,13 +69,16 @@ def authenticate(**credentials):
     If the given credentials are valid, return a User object.
     """
     for backend, backend_path in _get_backends(return_tuples=True):
+        # 检查是否支持这些参数.
         try:
+            # 会返回一个字典,这个字典的键是参数名字,值是值.这样可以实现外部参数检查
             inspect.getcallargs(backend.authenticate, **credentials)
         except TypeError:
             # This backend doesn't accept these credentials as arguments. Try the next one.
             continue
 
         try:
+            # 认证
             user = backend.authenticate(**credentials)
         except PermissionDenied:
             # This backend says to stop in our tracks - this user should not be allowed in at all.
@@ -78,12 +86,13 @@ def authenticate(**credentials):
         if user is None:
             continue
         # Annotate the user object with the path of the backend.
+        # 设置后端的路径到User对象上,之后有什么用呢?:因为用户的后端和用户的ID之后会被保存在sesson中,所以下次就可以从后端去
         user.backend = backend_path
         return user
 
     # The credentials supplied are invalid to all backends, fire signal
     user_login_failed.send(sender=__name__,
-            credentials=_clean_credentials(credentials))
+                           credentials=_clean_credentials(credentials))
 
 
 def login(request, user):
@@ -91,6 +100,9 @@ def login(request, user):
     Persist a user id and a backend in the request. This way a user doesn't
     have to reauthenticate on every request. Note that data set during
     the anonymous session is retained when the user logs in.
+
+    将一个用户的ID和认证后端持久化.之前的session会保持.
+
     """
     session_auth_hash = ''
     if user is None:
@@ -99,20 +111,26 @@ def login(request, user):
         session_auth_hash = user.get_session_auth_hash()
 
     if SESSION_KEY in request.session:
+        # 必须session的主键和user的pk一致,并且保存的hash和计算出来的hash一致,否则清空session
         if _get_user_session_key(request) != user.pk or (
-                session_auth_hash and
-                request.session.get(HASH_SESSION_KEY) != session_auth_hash):
+                    session_auth_hash and
+                        request.session.get(
+                            HASH_SESSION_KEY) != session_auth_hash):
             # To avoid reusing another user's session, create a new, empty
             # session if the existing session corresponds to a different
             # authenticated user.
             request.session.flush()
+    # 创建session.使用之前的key
     else:
         request.session.cycle_key()
+
+    # 保存了ID,后端,HASH,以便下次使用ID后端计算判断HASH是否有效
     request.session[SESSION_KEY] = user._meta.pk.value_to_string(user)
     request.session[BACKEND_SESSION_KEY] = user.backend
     request.session[HASH_SESSION_KEY] = session_auth_hash
     if hasattr(request, 'user'):
         request.user = user
+    # 调用的CSRF的rotate_token,在登录之后使用新的csrf_cookie.TODO:如果使用旧的会怎样
     rotate_token(request)
     user_logged_in.send(sender=user.__class__, request=request, user=user)
 
@@ -145,11 +163,13 @@ def logout(request):
 def get_user_model():
     """
     Returns the User model that is active in this project.
+    返回设置了的User模型
     """
     try:
         return django_apps.get_model(settings.AUTH_USER_MODEL)
     except ValueError:
-        raise ImproperlyConfigured("AUTH_USER_MODEL must be of the form 'app_label.model_name'")
+        raise ImproperlyConfigured(
+            "AUTH_USER_MODEL must be of the form 'app_label.model_name'")
     except LookupError:
         raise ImproperlyConfigured(
             "AUTH_USER_MODEL refers to model '%s' that has not been installed" % settings.AUTH_USER_MODEL
@@ -158,12 +178,16 @@ def get_user_model():
 
 def get_user(request):
     """
+    拿到session中的userid和后端路径,后端用来加载出user,
+    然后如果开启了SessionAuth中间件就比较User的hash和Session中的hash
+
     Returns the user model instance associated with the given request session.
     If no user is retrieved an instance of `AnonymousUser` is returned.
     """
     from .models import AnonymousUser
     user = None
     try:
+        # 拿到用户的ID和后端路径
         user_id = _get_user_session_key(request)
         backend_path = request.session[BACKEND_SESSION_KEY]
     except KeyError:
@@ -171,10 +195,13 @@ def get_user(request):
     else:
         if backend_path in settings.AUTHENTICATION_BACKENDS:
             backend = load_backend(backend_path)
+            # 后端有get_user方法,根据ID拿到用户.
             user = backend.get_user(user_id)
             # Verify the session
+            # 如果这个中间件在里面,就拿到hasn,然后验证
             if ('django.contrib.auth.middleware.SessionAuthenticationMiddleware'
-                    in settings.MIDDLEWARE_CLASSES and hasattr(user, 'get_session_auth_hash')):
+                in settings.MIDDLEWARE_CLASSES and hasattr(user,
+                                                           'get_session_auth_hash')):
                 session_hash = request.session.get(HASH_SESSION_KEY)
                 session_hash_verified = session_hash and constant_time_compare(
                     session_hash,
@@ -206,5 +233,6 @@ def update_session_auth_hash(request, user):
     """
     if hasattr(user, 'get_session_auth_hash') and request.user == user:
         request.session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+
 
 default_app_config = 'django.contrib.auth.apps.AuthConfig'

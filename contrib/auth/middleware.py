@@ -6,12 +6,14 @@ from django.utils.functional import SimpleLazyObject
 
 
 def get_user(request):
+    """拿到用户,如果没缓存就把用户缓存到request中"""
     if not hasattr(request, '_cached_user'):
         request._cached_user = auth.get_user(request)
     return request._cached_user
 
 
 class AuthenticationMiddleware(object):
+    """拿到用户并且放在请求中"""
     def process_request(self, request):
         assert hasattr(request, 'session'), (
             "The Django authentication middleware requires session middleware "
@@ -24,6 +26,7 @@ class AuthenticationMiddleware(object):
 
 class SessionAuthenticationMiddleware(object):
     """
+    只是有这么个类,之后判断这个类是否在设置中然后才去措施
     Formerly, a middleware for invalidating a user's sessions that don't
     correspond to the user's current session authentication hash. However, it
     caused the "Vary: Cookie" header on all responses.
