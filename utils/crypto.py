@@ -97,6 +97,7 @@ else:
         result = 0
         if six.PY3 and isinstance(val1, bytes) and isinstance(val2, bytes):
             for x, y in zip(val1, val2):
+                # 不是用if (x^y)判断应该是因为大部分情况下该字符串都是正确的.这样效率更高
                 result |= x ^ y
         else:
             for x, y in zip(val1, val2):
