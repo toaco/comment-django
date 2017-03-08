@@ -9,6 +9,7 @@ from django.utils.lru_cache import lru_cache
 
 def get_version(version=None):
     "Returns a PEP 386-compliant version number from VERSION."
+    # 返回版本号,默认就是__init__中的版本号元组,中间做了一些assert检查
     version = get_complete_version(version)
 
     # Now build the two parts of the version number:
@@ -33,6 +34,8 @@ def get_version(version=None):
 
 def get_major_version(version=None):
     "Returns major version from VERSION."
+
+    # 拿到主版本号
     version = get_complete_version(version)
     parts = 2 if version[2] == 0 else 3
     major = '.'.join(str(x) for x in version[:parts])
