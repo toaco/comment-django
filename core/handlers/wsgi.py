@@ -134,6 +134,7 @@ class WSGIRequest(http.HttpRequest):
         return http.QueryDict(raw_query_string, encoding=self._encoding)
 
     def _get_post(self):
+        # POST 一旦访问就会加载
         if not hasattr(self, '_post'):
             self._load_post_and_files()
         return self._post

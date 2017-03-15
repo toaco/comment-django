@@ -133,7 +133,7 @@ class CsrfViewMiddleware(object):
             return None
 
         try:
-            # TODO: 从cookie里面拿出之前设置的cookie,为什么要净化,不是自己之前设置的吗
+            # 从cookie里面拿出之前设置的cookie,将其净化
             csrf_token = _sanitize_token(
                 request.COOKIES[settings.CSRF_COOKIE_NAME])
             # Use same token next time

@@ -244,6 +244,7 @@ class HttpRequest(object):
 
     def _load_post_and_files(self):
         """Populate self._post and self._files if the content-type is a form type"""
+        # 加载的时候会调用UploadHandler.所以必须在Post之前设置Handler
         if self.method != 'POST':
             self._post, self._files = QueryDict('', encoding=self._encoding), MultiValueDict()
             return
