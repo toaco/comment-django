@@ -280,9 +280,12 @@ class Atomic(ContextDecorator):
 def atomic(using=None, savepoint=True):
     # Bare decorator: @atomic -- although the first argument is called
     # `using`, it's actually the function being decorated.
+    # 如果using是个可调用对象,如下封装
     if callable(using):
         return Atomic(DEFAULT_DB_ALIAS, savepoint)(using)
     # Decorator: @atomic(...) or context manager: with atomic(...): ...
+    # wsgi流程进来之后,传递就来的using是别名,字符串,如'default'
+    # atomic是一个上下文管理器,进入的时候保存断点,退出的时候正确的退出(如果有问题就回滚,没问题就提交?)
     else:
         return Atomic(using, savepoint)
 

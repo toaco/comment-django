@@ -8,7 +8,6 @@ from django.core.exceptions import AppRegistryNotReady, ImproperlyConfigured
 from django.utils import lru_cache
 from django.utils._os import upath
 from django.utils.deprecation import RemovedInDjango19Warning
-
 from .config import AppConfig
 
 
@@ -57,11 +56,13 @@ class Apps(object):
 
     def populate(self, installed_apps=None):
         """
+        该填入过程主要是导入app模块以及其模型模块,实例化AppConfig,执行appcofing的ready方法(需用户重载)
         Loads application configurations and models.
 
         This method imports each application module and then each model module.
 
         It is thread safe and idempotent, but not reentrant.
+        线程安全和幂等,但不是可重入的
         """
         if self.ready:
             return
@@ -79,6 +80,7 @@ class Apps(object):
 
             # Load app configs and app modules.
             for entry in installed_apps:
+                # app_config可以直接是AppConfig的实例
                 if isinstance(entry, AppConfig):
                     app_config = entry
                 else:
@@ -104,16 +106,21 @@ class Apps(object):
 
             # Load models.
             for app_config in self.app_configs.values():
+                # all_models是一个空的有序字典
                 all_models = self.all_models[app_config.label]
                 app_config.import_models(all_models)
 
+            # TODO:从WSGI过来,一开始并没有缓存,所以先不看
             self.clear_cache()
 
+            # 模型准备好了,动态添加的该属性
             self.models_ready = True
 
             for app_config in self.get_app_configs():
+                # 执行初始方法,该方法是用户通过子类化实现的
                 app_config.ready()
 
+            # apps准备好了
             self.ready = True
 
     def check_apps_ready(self):
@@ -154,6 +161,7 @@ class Apps(object):
     def get_models(self, app_mod=None, include_auto_created=False,
                    include_deferred=False, include_swapped=False):
         """
+        返回模型
         Returns a list of all installed models.
 
         By default, the following models aren't included:
@@ -170,6 +178,7 @@ class Apps(object):
             warnings.warn(
                 "The app_mod argument of get_models is deprecated.",
                 RemovedInDjango19Warning, stacklevel=2)
+            # 因为模型必须在APP里面,-1是模型模块名,-2才是App名字
             app_label = app_mod.__name__.split('.')[-2]
             try:
                 return list(self.get_app_config(app_label).get_models(
@@ -209,7 +218,7 @@ class Apps(object):
         app_models = self.all_models[app_label]
         if model_name in app_models:
             if (model.__name__ == app_models[model_name].__name__ and
-                    model.__module__ == app_models[model_name].__module__):
+                        model.__module__ == app_models[model_name].__module__):
                 warnings.warn(
                     "Model '%s.%s' was already registered. "
                     "Reloading models is not advised as it can lead to inconsistencies, "
@@ -282,7 +291,7 @@ class Apps(object):
         installed = set(app_config.name for app_config in self.get_app_configs())
         if not available.issubset(installed):
             raise ValueError("Available apps isn't a subset of installed "
-                "apps, extra apps: %s" % ", ".join(available - installed))
+                             "apps, extra apps: %s" % ", ".join(available - installed))
 
         self.stored_app_configs.append(self.app_configs)
         self.app_configs = OrderedDict(
@@ -334,11 +343,13 @@ class Apps(object):
     def clear_cache(self):
         """
         Clears all internal caches, for methods that alter the app registry.
+        清空模型相关的缓存,包括自动创建的,但是不包括deferred和swapped.
 
         This is mostly used in tests.
         """
         # Call expire cache on each model. This will purge
         # the relation tree and the fields cache.
+        # 清空函数的缓存
         self.get_models.cache_clear()
         if self.ready:
             for model in self.get_models(include_auto_created=True):
@@ -404,9 +415,9 @@ class Apps(object):
         return self._get_app_package(self.get_app(app_label))
 
     def _get_app_path(self, app):
-        if hasattr(app, '__path__'):        # models/__init__.py package
+        if hasattr(app, '__path__'):  # models/__init__.py package
             app_path = app.__path__[0]
-        else:                               # models.py module
+        else:  # models.py module
             app_path = app.__file__
         return os.path.dirname(upath(app_path))
 

@@ -26,6 +26,7 @@ class AppConfig(object):
 
         # Last component of the Python path to the application eg. 'admin'.
         # This value must be unique across a Django project.
+        # 如果为django.contrib.admin将是admin,rpartition结果('django.contrib', '.', 'admin')
         if not hasattr(self, 'label'):
             self.label = app_name.rpartition(".")[2]
 
@@ -42,17 +43,21 @@ class AppConfig(object):
         # Module containing models eg. <module 'django.contrib.admin.models'
         # from 'django/contrib/admin/models.pyc'>. Set by import_models().
         # None if the application doesn't have a models module.
+        # 如果包含有模型,那么设置为其模型的模块
         self.models_module = None
 
         # Mapping of lower case model names to model classes. Initially set to
         # None to prevent accidental access before import_models() runs.
+        # 模型名字和模型类的映射
         self.models = None
 
     def __repr__(self):
         return '<%s: %s>' % (self.__class__.__name__, self.label)
 
     def _path_from_module(self, module):
-        """Attempt to determine app's filesystem path from its module."""
+        """Attempt to determine app's filesystem path from its module.
+        根据模块返回其路径,关于__path__和__file__可以看一下python文档Import System部分
+        """
         # See #21874 for extended discussion of the behavior of this method in
         # various cases.
         # Convert paths to list because Python 3.3 _NamespacePath does not
@@ -78,6 +83,8 @@ class AppConfig(object):
     def create(cls, entry):
         """
         Factory that creates an app config from an entry in INSTALLED_APPS.
+        根据INSTALLED_APPS中的条目创建一个AppConfig,该条目可以是app模块的路径,也可以是AppConfig子类的路径
+        创建的时候讲导入AppConfig指向的模块
         """
         try:
             # If import_module succeeds, entry is a path to an app module,
@@ -86,6 +93,8 @@ class AppConfig(object):
             module = import_module(entry)
 
         except ImportError:
+            # 条目是AppConfig子类或者其他问题
+
             # Track that importing as an app module failed. If importing as an
             # app config class fails too, we'll trigger the ImportError again.
             module = None
@@ -98,30 +107,38 @@ class AppConfig(object):
                 raise
 
         else:
+            # 是个正确的模块路径
             try:
                 # If this works, the app module specifies an app config class.
+                #  default_app_config属性可以设置为appconfig子类,如果不是就是使用本类创建
                 entry = module.default_app_config
             except AttributeError:
                 # Otherwise, it simply uses the default app config class.
                 return cls(entry, module)
             else:
+                # 条目是AppConfig子类
+
                 mod_path, _, cls_name = entry.rpartition('.')
 
         # If we're reaching this point, we must attempt to load the app config
         # class located at <mod_path>.<cls_name>
+        # 这里也可能抛出异常
         mod = import_module(mod_path)
         try:
             cls = getattr(mod, cls_name)
         except AttributeError:
+            # 如果是None,说明entry是一个模块路径,否则是子类,子类的话上一步就应该正确导入,而模块路径的话不应该出现在这里
             if module is None:
                 # If importing as an app module failed, that error probably
                 # contains the most informative traceback. Trigger it again.
+                # 这句话的目的是触发异常,给出更加有用的异常信息.
                 import_module(entry)
             else:
                 raise
 
         # Check for obvious errors. (This check prevents duck typing, but
         # it could be removed if it became a problem in practice.)
+        # 检查明显的异常,防止鸭子类型,可以移除掉
         if not issubclass(cls, AppConfig):
             raise ImproperlyConfigured(
                 "'%s' isn't a subclass of AppConfig." % entry)
@@ -129,6 +146,7 @@ class AppConfig(object):
         # Obtain app name here rather than in AppClass.__init__ to keep
         # all error checking for entries in INSTALLED_APPS in one place.
         try:
+            # 必须有一个name,指向app模块的路径.
             app_name = cls.name
         except AttributeError:
             raise ImproperlyConfigured(
@@ -178,6 +196,7 @@ class AppConfig(object):
         """
         self.check_models_ready()
         for model in self.models.values():
+            # TODO: 这三个属性看了模型之后再来看
             if model._deferred and not include_deferred:
                 continue
             if model._meta.auto_created and not include_auto_created:
@@ -187,6 +206,9 @@ class AppConfig(object):
             yield model
 
     def import_models(self, all_models):
+        """导入该AppConfig实例的模型模块
+        all_models是一个模型名字和模型类的映射
+        """
         # Dictionary of models for this app, primarily maintained in the
         # 'all_models' attribute of the Apps this AppConfig is attached to.
         # Injected as a parameter because it gets populated when models are

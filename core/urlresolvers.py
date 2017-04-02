@@ -35,6 +35,8 @@ _urlconfs = local()
 
 
 class ResolverMatch(object):
+    """表示解析匹配的函数,及其相关信息"""
+
     def __init__(self, func, args, kwargs, url_name=None, app_name=None, namespaces=None):
         self.func = func
         self.args = args
@@ -42,6 +44,7 @@ class ResolverMatch(object):
         self.url_name = url_name
         self.app_name = app_name
 
+        # 组装出来命名空间,命名空间是以冒号分割的
         if namespaces:
             self.namespaces = [x for x in namespaces if x]
         else:
@@ -50,12 +53,16 @@ class ResolverMatch(object):
 
         if not hasattr(func, '__name__'):
             # A class-based view
+            # 基于类的视图,该视图的路径为类路径
             self._func_path = '.'.join([func.__class__.__module__, func.__class__.__name__])
         else:
             # A function-based view
+            # 基于函数的视图,路径为函数路径
             self._func_path = '.'.join([func.__module__, func.__name__])
 
+        # 视图路径为url_name或者可导入路径
         view_path = url_name or self._func_path
+        # 视图的全面为命名空间:视图路径
         self.view_name = ':'.join(self.namespaces + [view_path])
 
     def __getitem__(self, index):
@@ -74,6 +81,7 @@ class NoReverseMatch(Exception):
     pass
 
 
+# maxsize设置为None,因此没有开启lru_cache
 @lru_cache.lru_cache(maxsize=None)
 def get_callable(lookup_view, can_fail=False):
     """
@@ -81,6 +89,7 @@ def get_callable(lookup_view, can_fail=False):
     by both resolve() and reverse(), so can_fail allows the caller to choose
     between returning the input as is and raising an exception when the input
     string can't be interpreted as an import path.
+    解析和反转都用到该函数
 
     If lookup_view is already a callable, return it.
     If lookup_view is a string import path that can be resolved to a callable,
@@ -89,10 +98,12 @@ def get_callable(lookup_view, can_fail=False):
       is returned as is. If can_fail is False, an exception is raised (either
       ImportError or ViewDoesNotExist).
     """
+    # 如果是可调用对象,直接返回
     if callable(lookup_view):
         return lookup_view
 
     mod_name, func_name = get_mod_func(lookup_view)
+    # 没有.,那么本身也不可能是可调用对象,因此呢如果是这为can_fail则直接返回,否则抛出异常
     if not func_name:  # No '.' in lookup_view
         if can_fail:
             return lookup_view
@@ -101,11 +112,15 @@ def get_callable(lookup_view, can_fail=False):
                 "Could not import '%s'. The path must be fully qualified." %
                 lookup_view)
 
+    # 现在只能是一个可调用函数的路径了
     try:
         mod = import_module(mod_name)
+    # 路径错误
     except ImportError:
+        # 直接返回
         if can_fail:
             return lookup_view
+        # 抛出异常
         else:
             parentmod, submod = get_mod_func(mod_name)
             if submod and not module_has_submodule(import_module(parentmod), submod):
@@ -114,6 +129,7 @@ def get_callable(lookup_view, can_fail=False):
                     (lookup_view, mod_name))
             else:
                 raise
+    # 已经导入了模块
     else:
         try:
             view_func = getattr(mod, func_name)
@@ -130,7 +146,7 @@ def get_callable(lookup_view, can_fail=False):
                 raise ViewDoesNotExist(
                     "Could not import '%s.%s'. View is not callable." %
                     (mod_name, func_name))
-
+            # 找到了最终的视图函数
             return view_func
 
 
@@ -152,9 +168,12 @@ def get_ns_resolver(ns_pattern, resolver):
 
 
 def get_mod_func(callback):
+    # 拆分出mod和func字符串列表
     # Converts 'django.views.news.stories.story_detail' to
     # ['django.views.news.stories', 'story_detail']
     try:
+        # rindex,最右边的点.为什么不用rpartion?
+        # 因为使用rpartition,从最右边分割,但是如果一个.都没有,前两个将为空,最后一个是完整的,不符合要求
         dot = callback.rindex('.')
     except ValueError:
         return callback, ''
@@ -165,8 +184,8 @@ class LocaleRegexProvider(object):
     """
     A mixin to provide a default regex property which can vary by active
     language.
-
     """
+
     def __init__(self, regex):
         # regex is either a string representing a regular expression, or a
         # translatable string (using ugettext_lazy) representing a regular
@@ -179,6 +198,8 @@ class LocaleRegexProvider(object):
         """
         Returns a compiled regular expression, depending upon the activated
         language-code.
+
+        得到当前语言代码的正则表达式,表达式是编译好的
         """
         language_code = get_language()
         if language_code not in self._regex_dict:
@@ -203,6 +224,7 @@ class RegexURLPattern(LocaleRegexProvider):
         # callback is either a string like 'foo.views.news.stories.story_detail'
         # which represents the path to a module and a view function name, or a
         # callable object (view).
+        # callback可以是模块路径或者视图函数路径,也可以是视图函数
         if callable(callback):
             self._callback = callback
         else:
@@ -217,29 +239,38 @@ class RegexURLPattern(LocaleRegexProvider):
     def add_prefix(self, prefix):
         """
         Adds the prefix string to a string-based callback.
+        判断是否有_callback_str属性.如果有加上前缀
         """
         if not prefix or not hasattr(self, '_callback_str'):
             return
         self._callback_str = prefix + '.' + self._callback_str
 
     def resolve(self, path):
+        """
+        path是传递进来的URL,不包括主机名的部分
+        返回解析到的结果,可以使用索引取值(self.func, self.args, self.kwargs)[i]
+        """
         match = self.regex.search(path)
         if match:
             # If there are any named groups, use those as kwargs, ignoring
             # non-named groups. Otherwise, pass all non-named arguments as
             # positional arguments.
+            # 字典参数,如果有,则取字典的关键字参数+额外的参数, 非关键字参数空
+            # 如果没有,则额外的参数 + 非关键字参数
             kwargs = match.groupdict()
             if kwargs:
                 args = ()
             else:
                 args = match.groups()
             # In both cases, pass any extra_kwargs as **kwargs.
+            # 额外的参数传递进去
             kwargs.update(self.default_args)
 
             return ResolverMatch(self.callback, args, kwargs, self.name)
 
     @property
     def callback(self):
+        """返回可调用对象,如果_callback已经存在,那么直接返回,如果不存在,那么通过_callback_str去导入进来"""
         if self._callback is not None:
             return self._callback
 
@@ -251,13 +282,15 @@ class RegexURLResolver(LocaleRegexProvider):
     def __init__(self, regex, urlconf_name, default_kwargs=None, app_name=None, namespace=None):
         LocaleRegexProvider.__init__(self, regex)
         # urlconf_name is a string representing the module containing URLconfs.
+        # name 也可以直接是一个模块,或者直接是urlpatterns列表,但是都存储在module中,在self.pattern属性中会正确取出来
         self.urlconf_name = urlconf_name
         if not isinstance(urlconf_name, six.string_types):
             self._urlconf_module = self.urlconf_name
-        self.callback = None
         self.default_kwargs = default_kwargs or {}
         self.namespace = namespace
         self.app_name = app_name
+
+        self.callback = None
         self._reverse_dict = {}
         self._namespace_dict = {}
         self._app_dict = {}
@@ -276,11 +309,13 @@ class RegexURLResolver(LocaleRegexProvider):
             self.__class__.__name__, urlconf_repr, self.app_name,
             self.namespace, self.regex.pattern)
 
+    # TODO
     def _populate(self):
         lookups = MultiValueDict()
         namespaces = {}
         apps = {}
         language_code = get_language()
+        # todo: 为什么要reverse?
         for pattern in reversed(self.url_patterns):
             if hasattr(pattern, '_callback_str'):
                 self._callback_strs.add(pattern._callback_str)
@@ -357,21 +392,28 @@ class RegexURLResolver(LocaleRegexProvider):
         return name in self._callback_strs
 
     def resolve(self, path):
+        # path可能是个reverse_lazy对象
         path = force_text(path)  # path may be a reverse_lazy object
         tried = []
+        # 一开始regex是'^/'(在base.py中设置的)
         match = self.regex.search(path)
         if match:
+            # 截断匹配的前部分,后面的接着去匹配
             new_path = path[match.end():]
             for pattern in self.url_patterns:
+                # ...
                 try:
                     sub_match = pattern.resolve(new_path)
+                # 如果是include的没有匹配就会抛出该异常,记录尝试了但是失败了的,可以用于Debug
                 except Resolver404 as e:
                     sub_tried = e.args[0].get('tried')
+                    # 如果是后面没有匹配到
                     if sub_tried is not None:
                         tried.extend([pattern] + t for t in sub_tried)
                     else:
                         tried.append([pattern])
                 else:
+                    # 如果匹配了
                     if sub_match:
                         sub_match_dict = dict(match.groupdict(), **self.default_kwargs)
                         sub_match_dict.update(sub_match.kwargs)
@@ -384,7 +426,9 @@ class RegexURLResolver(LocaleRegexProvider):
                             [self.namespace] + sub_match.namespaces
                         )
                     tried.append([pattern])
+            # 如果前面匹配但是后面都不匹配抛出的异常
             raise Resolver404({'tried': tried, 'path': new_path})
+        # 如果前面都不匹配,直接抛出的异常
         raise Resolver404({'path': path})
 
     @property
@@ -399,6 +443,7 @@ class RegexURLResolver(LocaleRegexProvider):
     def url_patterns(self):
         # urlconf_module might be a valid set of patterns, so we default to it
         patterns = getattr(self.urlconf_module, "urlpatterns", self.urlconf_module)
+        # patterns必须是可迭代对象.
         try:
             iter(patterns)
         except TypeError:
@@ -411,7 +456,10 @@ class RegexURLResolver(LocaleRegexProvider):
         return patterns
 
     def resolve_error_handler(self, view_type):
+        # 传递进来的是statuscode,所以在urlconf_module模块上写个handler404就可以变成404的异常处理回调
+        # handler可以是路径
         callback = getattr(self.urlconf_module, 'handler%s' % view_type, None)
+        # 没有的话使用默认的
         if not callback:
             # No handler specified in file; use default
             # Lazy import, since django.urls imports this file
@@ -422,6 +470,7 @@ class RegexURLResolver(LocaleRegexProvider):
     def reverse(self, lookup_view, *args, **kwargs):
         return self._reverse_with_prefix(lookup_view, '', *args, **kwargs)
 
+    # TODO
     def _reverse_with_prefix(self, lookup_view, _prefix, *args, **kwargs):
         if args and kwargs:
             raise ValueError("Don't mix *args and **kwargs in call to reverse()!")
@@ -454,7 +503,7 @@ class RegexURLResolver(LocaleRegexProvider):
                     candidate_subs = dict(zip(prefix_args + params, text_args))
                 else:
                     if (set(kwargs.keys()) | set(defaults.keys()) != set(params) |
-                            set(defaults.keys()) | set(prefix_args)):
+                        set(defaults.keys()) | set(prefix_args)):
                         continue
                     matches = True
                     for k, v in defaults.items():
@@ -491,7 +540,7 @@ class RegexURLResolver(LocaleRegexProvider):
 
         patterns = [pattern for (possibility, pattern, defaults) in possibilities]
         raise NoReverseMatch("Reverse for '%s' with arguments '%s' and keyword "
-                "arguments '%s' not found. %d pattern(s) tried: %s" %
+                             "arguments '%s' not found. %d pattern(s) tried: %s" %
                              (lookup_view_s, args, kwargs, len(patterns), patterns))
 
 
@@ -502,6 +551,7 @@ class LocaleRegexURLResolver(RegexURLResolver):
     Rather than taking a regex argument, we just override the ``regex``
     function to always return the active language-code as regex.
     """
+
     def __init__(self, urlconf_name, default_kwargs=None, app_name=None, namespace=None):
         super(LocaleRegexURLResolver, self).__init__(
             None, urlconf_name, default_kwargs, app_name, namespace)
@@ -520,17 +570,19 @@ def resolve(path, urlconf=None):
         urlconf = get_urlconf()
     return get_resolver(urlconf).resolve(path)
 
-
+# TODO
 def reverse(viewname, urlconf=None, args=None, kwargs=None, prefix=None, current_app=None):
+    # 拿到根urlconf,根据wsgi启动时的设置,即使不要下面两句也是正确的拿到resolver呀,因为默认的conf就是setting.ROOT_CONF
     if urlconf is None:
         urlconf = get_urlconf()
+    # 拿到根urlconf建立的resolver
     resolver = get_resolver(urlconf)
     args = args or []
     kwargs = kwargs or {}
 
     if prefix is None:
         prefix = get_script_prefix()
-
+    # 如果不是字符串直接拿出来,但是如果是就反转,按照命名空间处理
     if not isinstance(viewname, six.string_types):
         view = viewname
     else:
@@ -577,6 +629,7 @@ def reverse(viewname, urlconf=None, args=None, kwargs=None, prefix=None, current
 
     return force_text(iri_to_uri(resolver._reverse_with_prefix(view, prefix, *args, **kwargs)))
 
+
 reverse_lazy = lazy(reverse, six.text_type)
 
 
@@ -618,6 +671,7 @@ def set_urlconf(urlconf_name):
     """
     Sets the URLconf for the current thread (overriding the default one in
     settings). Set to None to revert back to the default.
+    为当前线程设置URLconf,如果设置为None就会返回到默认状态,name是可导入字符串
     """
     if urlconf_name:
         _urlconfs.value = urlconf_name

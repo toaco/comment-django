@@ -34,6 +34,10 @@ class SessionMiddleware(object):
                 response.delete_cookie(settings.SESSION_COOKIE_NAME,
                     domain=settings.SESSION_COOKIE_DOMAIN)
             else:
+                # 访问过就设置Vary Cookie,为什么
+                # 分析:猜测的:如果开启了中间件,但是从没访问过session,那么完全没必要设置cookie,
+                # 也没必要VaryCookie,没有访问过也就意味着没有修改过,所以不会设置cookie,也不会设置vary on
+                # cookie,如果访问过,那么必须设置vary头,如果修改过,则也要重新设置cookie.
                 if accessed:
                     patch_vary_headers(response, ('Cookie',))
                 if (modified or settings.SESSION_SAVE_EVERY_REQUEST) and not empty:

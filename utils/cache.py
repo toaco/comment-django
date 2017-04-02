@@ -34,6 +34,7 @@ cc_delim_re = re.compile(r'\s*,\s*')
 
 def patch_cache_control(response, **kwargs):
     """
+    设置cache部分
     This function patches the Cache-Control header by adding all
     keyword arguments to it. The transformation is as follows:
 
@@ -44,6 +45,7 @@ def patch_cache_control(response, **kwargs):
     * All other parameters are added with their value, after applying
       str() to it.
     """
+
     def dictitem(s):
         t = s.split('=', 1)
         if len(t) > 1:
@@ -89,7 +91,7 @@ def get_max_age(response):
     if not response.has_header('Cache-Control'):
         return
     cc = dict(_to_tuple(el) for el in
-        cc_delim_re.split(response['Cache-Control']))
+              cc_delim_re.split(response['Cache-Control']))
     if 'max-age' in cc:
         try:
             return int(cc['max-age'])
@@ -105,6 +107,8 @@ def _set_response_etag(response):
 
 def patch_response_headers(response, cache_timeout=None):
     """
+    设置ETag, Last-Modified, Expires 和 Cache-Control的max-age部分,都用于缓存控制
+
     Adds some useful headers to the given HttpResponse object:
         ETag, Last-Modified, Expires and Cache-Control
 
@@ -134,7 +138,8 @@ def add_never_cache_headers(response):
     Adds headers to a response to indicate that a page should never be cached.
     """
     patch_response_headers(response, cache_timeout=-1)
-    patch_cache_control(response, no_cache=True, no_store=True, must_revalidate=True)
+    patch_cache_control(response, no_cache=True, no_store=True,
+                        must_revalidate=True)
 
 
 def patch_vary_headers(response, newheaders):
@@ -181,12 +186,15 @@ def _i18n_cache_key_suffix(request, cache_key):
         # User-defined tzinfo classes may return absolutely anything.
         # Hence this paranoid conversion to create a valid cache key.
         tz_name = force_text(get_current_timezone_name(), errors='ignore')
-        cache_key += '.%s' % tz_name.encode('ascii', 'ignore').decode('ascii').replace(' ', '_')
+        cache_key += '.%s' % tz_name.encode('ascii', 'ignore').decode(
+            'ascii').replace(' ', '_')
     return cache_key
 
 
 def _generate_cache_key(request, method, headerlist, key_prefix):
-    """Returns a cache key from the headers given in the header list."""
+    """Returns a cache key from the headers given in the header list.
+    根据prefix,请求的URL,方法,国际化,Vary头生成page缓存键
+    """
     ctx = hashlib.md5()
     for header in headerlist:
         value = request.META.get(header, None)
@@ -199,7 +207,9 @@ def _generate_cache_key(request, method, headerlist, key_prefix):
 
 
 def _generate_cache_header_key(key_prefix, request):
-    """Returns a cache key for the header cache."""
+    """Returns a cache key for the header cache.
+    根据prefix,请求URL,国际化生存header缓存键.
+    """
     url = hashlib.md5(force_bytes(iri_to_uri(request.build_absolute_uri())))
     cache_key = 'views.decorators.cache.cache_header.%s.%s' % (
         key_prefix, url.hexdigest())
@@ -228,7 +238,8 @@ def get_cache_key(request, key_prefix=None, method='GET', cache=None):
         return None
 
 
-def learn_cache_key(request, response, cache_timeout=None, key_prefix=None, cache=None):
+def learn_cache_key(request, response, cache_timeout=None, key_prefix=None,
+                    cache=None):
     """
     Learns what headers to take into account for some request URL from the
     response object. It stores those headers in a global URL registry so that
@@ -245,24 +256,34 @@ def learn_cache_key(request, response, cache_timeout=None, key_prefix=None, cach
         key_prefix = settings.CACHE_MIDDLEWARE_KEY_PREFIX
     if cache_timeout is None:
         cache_timeout = settings.CACHE_MIDDLEWARE_SECONDS
+    # 生成key,根据请求,已经考虑到了I18N
     cache_key = _generate_cache_header_key(key_prefix, request)
     if cache is None:
         cache = caches[settings.CACHE_MIDDLEWARE_ALIAS]
     if response.has_header('Vary'):
+
         is_accept_language_redundant = settings.USE_I18N or settings.USE_L10N
         # If i18n or l10n are used, the generated cache key will be suffixed
         # with the current locale. Adding the raw value of Accept-Language is
         # redundant in that case and would result in storing the same content
         # under multiple keys in the cache. See #18191 for details.
         headerlist = []
+        # 逗号分隔Vary
         for header in cc_delim_re.split(response['Vary']):
+            # 全部大写并且加下划线
             header = header.upper().replace('-', '_')
+            # 如果使用国际化,并且Vary根据ACCEPT_LANGUAGE判断,那么直接跳过,因为Key里
+            # 面已经根据is_accept_language_redundant设置过了,但是如果没有开启国际化
+            # 那么缓存就会考虑到ACCEPT_LANGUAGE部分
             if header == 'ACCEPT_LANGUAGE' and is_accept_language_redundant:
                 continue
             headerlist.append('HTTP_' + header)
         headerlist.sort()
+
+        # 设置header_key
         cache.set(cache_key, headerlist, cache_timeout)
-        return _generate_cache_key(request, request.method, headerlist, key_prefix)
+        return _generate_cache_key(request, request.method, headerlist,
+                                   key_prefix)
     else:
         # if there is no Vary header, we still need a cache key
         # for the request.build_absolute_uri()

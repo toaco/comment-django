@@ -31,6 +31,7 @@ class LimitedStream(object):
     LimitedStream wraps another stream in order to not allow reading from it
     past specified amount of bytes.
     '''
+
     def __init__(self, stream, limit, buf_size=64 * 1024 * 1024):
         self.stream = stream
         self.remaining = limit
@@ -60,7 +61,7 @@ class LimitedStream(object):
 
     def readline(self, size=None):
         while b'\n' not in self.buffer and \
-              (size is None or len(self.buffer) < size):
+                (size is None or len(self.buffer) < size):
             if size:
                 # since size is not None here, len(self.buffer) < size
                 chunk = self._read_limited(size - len(self.buffer))
@@ -133,6 +134,7 @@ class WSGIRequest(http.HttpRequest):
         return http.QueryDict(raw_query_string, encoding=self._encoding)
 
     def _get_post(self):
+        # POST 一旦访问就会加载
         if not hasattr(self, '_post'):
             self._load_post_and_files()
         return self._post
@@ -162,7 +164,9 @@ class WSGIHandler(base.BaseHandler):
     def __call__(self, environ, start_response):
         # Set up middleware if needed. We couldn't do this earlier, because
         # settings weren't available.
+        # 设置中间件,不能在init中进行是因为setting还不可用,todo:为什么不可用,按照流程,此时setting是好的呀?
         if self._request_middleware is None:
+            # TODO:理解这里的锁
             with self.initLock:
                 try:
                     # Check that middleware is still uninitialized.
@@ -172,20 +176,23 @@ class WSGIHandler(base.BaseHandler):
                     # Unload whatever middleware we got
                     self._request_middleware = None
                     raise
-
+        # 在当前线程局部数据中存放脚本名字,加上后缀/
         set_script_prefix(get_script_name(environ))
+        # 发送请求开始信号
         signals.request_started.send(sender=self.__class__, environ=environ)
+        # 请求有问题直接返回HttpResponseBadRequest
         try:
             request = self.request_class(environ)
         except UnicodeDecodeError:
             logger.warning('Bad Request (UnicodeDecodeError)',
-                exc_info=sys.exc_info(),
-                extra={
-                    'status_code': 400,
-                }
-            )
+                           exc_info=sys.exc_info(),
+                           extra={
+                               'status_code': 400,
+                           }
+                           )
             response = http.HttpResponseBadRequest()
         else:
+            # Django的核心处理过程
             response = self.get_response(request)
 
         response._handler_class = self.__class__
@@ -193,8 +200,10 @@ class WSGIHandler(base.BaseHandler):
         status = '%s %s' % (response.status_code, response.reason_phrase)
         response_headers = [(str(k), str(v)) for k, v in response.items()]
         for c in response.cookies.values():
+            # 因为python自带的output的header后面有个冒号,为Set-Cookie:
             response_headers.append((str('Set-Cookie'), str(c.output(header=''))))
         start_response(force_str(status), response_headers)
+        # TODO:如果是一个文件响应才会执行,文件响应是怎么回事
         if getattr(response, 'file_to_stream', None) is not None and environ.get('wsgi.file_wrapper'):
             response = environ['wsgi.file_wrapper'](response.file_to_stream)
         return response

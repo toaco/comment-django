@@ -60,6 +60,7 @@ class UpdateCacheMiddleware(object):
     UpdateCacheMiddleware must be the first piece of middleware in
     MIDDLEWARE_CLASSES so that it'll get called last during the response phase.
     """
+
     def __init__(self):
         self.cache_timeout = settings.CACHE_MIDDLEWARE_SECONDS
         self.key_prefix = settings.CACHE_MIDDLEWARE_KEY_PREFIX
@@ -67,34 +68,51 @@ class UpdateCacheMiddleware(object):
         self.cache = caches[self.cache_alias]
 
     def _should_update_cache(self, request, response):
-        return hasattr(request, '_cache_update_cache') and request._cache_update_cache
+        return hasattr(request,
+                       '_cache_update_cache') and request._cache_update_cache
 
     def process_response(self, request, response):
         """Sets the cache, if needed."""
+
+        # TODO
         if not self._should_update_cache(request, response):
             # We don't need to update the cache, just return.
             return response
 
+        # 不是流响应,不是200码
         if response.streaming or response.status_code != 200:
             return response
 
         # Don't cache responses that set a user-specific (and maybe security
         # sensitive) cookie in response to a cookie-less request.
-        if not request.COOKIES and response.cookies and has_vary_header(response, 'Cookie'):
+        # 请求没有cookie,但是处理过程中设置了cookie,并且Vary包含了Cookie,直接返回
+        # 分析:因为缓存服务器收到请求是没有Cookie的,然后返回的告诉他类似的请求根据Cookie
+        # 来判断是否使用缓存,这样,下一个没有Cookie的人访问该URL则会拿到之前的人
+        # 的Cookie中的数据
+        if not request.COOKIES and response.cookies and has_vary_header(
+                response, 'Cookie'):
             return response
 
         # Try to get the timeout from the "max-age" section of the "Cache-
         # Control" header before reverting to using the default cache_timeout
         # length.
+        # 首先使用response中设置的max_age(根据Cache-Control部分),如果没有设置
+        # 则使用setting中的.
+        # 分析:setting中的是最后的依据,如果设置过则按照设置过的来
         timeout = get_max_age(response)
         if timeout is None:
             timeout = self.cache_timeout
         elif timeout == 0:
             # max-age was set to 0, don't bother caching.
             return response
+        # 设置ETag, Last-Modified, Expires 和 Cache-Control的max-age部分,都用于缓存控制
         patch_response_headers(response, timeout)
+
         if timeout:
-            cache_key = learn_cache_key(request, response, timeout, self.key_prefix, cache=self.cache)
+            # 拿到cache——key，该方法设置了header_key,返回的是page_key
+            cache_key = learn_cache_key(request, response, timeout,
+                                        self.key_prefix, cache=self.cache)
+            # 如果有render,则设置回调,在render之后缓存.
             if hasattr(response, 'render') and callable(response.render):
                 response.add_post_render_callback(
                     lambda r: self.cache.set(cache_key, r, timeout)
@@ -112,6 +130,7 @@ class FetchFromCacheMiddleware(object):
     FetchFromCacheMiddleware must be the last piece of middleware in
     MIDDLEWARE_CLASSES so that it'll get called last during the request phase.
     """
+
     def __init__(self):
         self.key_prefix = settings.CACHE_MIDDLEWARE_KEY_PREFIX
         self.cache_alias = settings.CACHE_MIDDLEWARE_ALIAS
@@ -123,18 +142,21 @@ class FetchFromCacheMiddleware(object):
         version if available.
         """
         if request.method not in ('GET', 'HEAD'):
+            # 如果不是get和HEAD请求,则不会缓存
             request._cache_update_cache = False
             return None  # Don't bother checking the cache.
 
         # try and get the cached GET response
-        cache_key = get_cache_key(request, self.key_prefix, 'GET', cache=self.cache)
+        cache_key = get_cache_key(request, self.key_prefix, 'GET',
+                                  cache=self.cache)
         if cache_key is None:
             request._cache_update_cache = True
             return None  # No cache information available, need to rebuild.
         response = self.cache.get(cache_key, None)
         # if it wasn't found and we are looking for a HEAD, try looking just for that
         if response is None and request.method == 'HEAD':
-            cache_key = get_cache_key(request, self.key_prefix, 'HEAD', cache=self.cache)
+            cache_key = get_cache_key(request, self.key_prefix, 'HEAD',
+                                      cache=self.cache)
             response = self.cache.get(cache_key, None)
 
         if response is None:
@@ -153,6 +175,7 @@ class CacheMiddleware(UpdateCacheMiddleware, FetchFromCacheMiddleware):
     Also used as the hook point for the cache decorator, which is generated
     using the decorator-from-middleware utility.
     """
+
     def __init__(self, cache_timeout=None, **kwargs):
         # We need to differentiate between "provided, but using default value",
         # and "not provided". If the value is provided using a default, then

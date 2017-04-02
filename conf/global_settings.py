@@ -1,3 +1,4 @@
+# NOTE: 默认设置,可以在DHABGI_SETTINGS_MODULE中重载
 # Default Django settings. Override these with settings in the module
 # pointed-to by the DJANGO_SETTINGS_MODULE environment variable.
 
@@ -573,9 +574,11 @@ MESSAGE_STORAGE = 'django.contrib.messages.storage.fallback.FallbackStorage'
 ###########
 
 # The callable to use to configure logging
+# 配置线面LOGGING的可调用对象
 LOGGING_CONFIG = 'logging.config.dictConfig'
 
 # Custom logging configuration.
+# 自定义的logging配置,字典类型
 LOGGING = {}
 
 # Default exception reporter filter class used in case none has been

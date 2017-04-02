@@ -137,6 +137,7 @@ if ContextDecorator is None:
     class ContextDecorator(object):
         """
         A base class that enables a context manager to also be used as a decorator.
+        将上下文管理器用作装饰器
         """
         def __call__(self, func):
             @wraps(func, assigned=available_attrs(func))
